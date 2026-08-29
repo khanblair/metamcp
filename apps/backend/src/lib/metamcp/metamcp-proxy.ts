@@ -41,6 +41,10 @@ import { requestWithSessionRecovery } from "./list-handler-recovery";
 import { mcpServerPool } from "./mcp-server-pool";
 import { createAuditCallToolMiddleware } from "./metamcp-middleware/audit-requests.functional";
 import {
+  createDiscoverCallToolMiddleware,
+  createDiscoverListToolsMiddleware,
+} from "./metamcp-middleware/discover-tools.functional";
+import {
   createFilterCallToolMiddleware,
   createFilterListToolsMiddleware,
 } from "./metamcp-middleware/filter-tools.functional";
@@ -641,7 +645,16 @@ export const createServer = async (
   };
 
   // Compose middleware with handlers - this is the Express-like functional approach
+  //
+  // createDiscoverListToolsMiddleware/createDiscoverCallToolMiddleware are
+  // deliberately outermost. On the list side that means they see the fully
+  // resolved (overridden + filtered) tool array before deciding whether to
+  // collapse it to the two meta-tools. On the call side it means a
+  // metamcp_call gets rewritten to the real tool name *before* audit/filter/
+  // overrides run, so those keep seeing (and logging) the real tool exactly
+  // as when discovery mode is off.
   const listToolsWithMiddleware = compose(
+    createDiscoverListToolsMiddleware(),
     createToolOverridesListToolsMiddleware({
       cacheEnabled: true,
       persistentCacheOnListTools: true,
@@ -653,6 +666,7 @@ export const createServer = async (
   )(originalListToolsHandler);
 
   const callToolWithMiddleware = compose(
+    createDiscoverCallToolMiddleware(),
     createAuditCallToolMiddleware({ resolveToolIdentity }),
     createFilterCallToolMiddleware({
       cacheEnabled: true,

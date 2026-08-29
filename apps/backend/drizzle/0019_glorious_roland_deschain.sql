@@ -1,0 +1,1 @@
+ALTER TABLE "namespaces" ADD COLUMN "discovery_mode_enabled" boolean DEFAULT false NOT NULL;

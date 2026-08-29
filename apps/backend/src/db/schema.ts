@@ -255,6 +255,9 @@ export const namespacesTable = pgTable(
     user_id: text("user_id").references(() => usersTable.id, {
       onDelete: "cascade",
     }),
+    discovery_mode_enabled: boolean("discovery_mode_enabled")
+      .notNull()
+      .default(false),
   },
   (table) => [
     index("namespaces_user_id_idx").on(table.user_id),
