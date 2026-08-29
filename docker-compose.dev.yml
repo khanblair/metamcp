@@ -19,11 +19,20 @@ services:
       - /app/packages/zod-types/node_modules
       - /app/packages/eslint-config/node_modules
       - /app/packages/typescript-config/node_modules
+      # Docker-based STDIO servers (github-mcp-server, sonarqube) run `docker run`
+      # inside this container, so it needs access to the host's Docker daemon.
+      - /var/run/docker.sock:/var/run/docker.sock
+      # quickbooks STDIO server's command references this host path directly
+      # (it's a custom local project, not an installable npm package).
+      - /redacted-path/quickbooks-online-mcp-server:/redacted-path/quickbooks-online-mcp-server:ro
     environment:
       # pnpm runs non-interactively here (detached compose has no TTY). Without
       # CI=true, a `pnpm install` that needs to purge node_modules aborts with
       # ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY and kills the container.
       CI: "true"
+      # Overrides the "production" value from .env — running `next dev` with
+      # NODE_ENV=production is non-standard and Next.js warns on every boot.
+      NODE_ENV: development
       LOG_LEVEL: ${LOG_LEVEL:-all}
       # Postgres connection details
       POSTGRES_HOST: ${POSTGRES_HOST:-postgres}
@@ -78,7 +87,8 @@ services:
 
 volumes:
   postgres_data_dev:
-    driver: local
+    external: true
+    name: metamcp_postgres_data
 
 networks:
   metamcp-network:

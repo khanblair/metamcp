@@ -103,7 +103,11 @@ export default function NamespaceDetailPage({
       console.log("MetaMCP Notification:", notification);
     },
     onStdErrNotification: (notification) => {
-      console.error("MetaMCP StdErr:", notification);
+      // stderr is a routine logging channel for many MCP servers (e.g. Java-based
+      // ones write all logging there since stdout is reserved for JSON-RPC), not
+      // necessarily an error condition — console.error was flooding devtools with
+      // false alarms for normal server chatter.
+      console.log("MetaMCP StdErr:", notification);
     },
     enabled: Boolean(namespace && !isLoading),
   });

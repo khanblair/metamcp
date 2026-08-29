@@ -48,9 +48,12 @@ COPY . .
 # Build all packages and apps
 RUN pnpm build
 
-RUN sed -i -e "s/30000/600000/" \
-    "node_modules/.pnpm/next@15.5.12_react-dom@19.1.2_react@19.1.2__react@19.1.2/node_modules/next/dist/server/lib/router-utils/proxy-request.js" \
-    "node_modules/.pnpm/next@15.5.12_react-dom@19.1.2_react@19.1.2__react@19.1.2/node_modules/next/dist/esm/server/lib/router-utils/proxy-request.js"
+# Patch Next.js's proxy timeout regardless of the exact pnpm dependency-hash
+# suffix in the path (it drifts with lockfile resolution, e.g. peer dep
+# versions), unlike a hardcoded path which breaks the build on any drift.
+RUN find node_modules/.pnpm -path "*/next@*/node_modules/next/dist/server/lib/router-utils/proxy-request.js" \
+    -o -path "*/next@*/node_modules/next/dist/esm/server/lib/router-utils/proxy-request.js" \
+    | xargs -r sed -i -e "s/30000/600000/"
 
 # Production runner stage
 FROM base AS runner
@@ -63,8 +66,10 @@ LABEL org.opencontainers.image.licenses="MIT"
 LABEL org.opencontainers.image.title="MetaMCP"
 LABEL org.opencontainers.image.vendor="metatool-ai"
 
-# Install curl for health checks
-RUN apt-get update && apt-get install -y curl postgresql-client && apt-get clean && rm -rf /var/lib/apt/lists/*
+# Install curl for health checks, and the Docker CLI so docker-based STDIO
+# servers (github-mcp-server, sonarqube) can spawn sibling containers via the
+# host socket mounted in docker-compose.yml.
+RUN apt-get update && apt-get install -y curl postgresql-client docker.io && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user with proper home directory
 RUN addgroup --system --gid 1001 nodejs
@@ -87,16 +92,30 @@ COPY --from=builder --chown=nextjs:nodejs /app/package.json ./
 COPY --from=builder --chown=nextjs:nodejs /app/pnpm-workspace.yaml ./
 
 # Install production dependencies only
-RUN pnpm install --prod
+# CI=true avoids ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY — pnpm needs
+# this since `docker build` (like detached `docker compose up`) has no TTY.
+RUN CI=true pnpm install --prod
 
-# Install drizzle-kit locally in backend for migrations
-RUN cd apps/backend && pnpm add drizzle-kit@0.31.1
+# Install drizzle-kit locally in backend for migrations. drizzle-kit is
+# already a devDependency there, so `pnpm add` (even with --prod) just
+# updates its version in place under devDependencies instead of moving it —
+# meaning it stays excluded by the prod-only install above and its binary
+# never gets linked into apps/backend/node_modules/.bin. Using --filter from
+# the workspace root (not `cd`) with both --save-prod (record under
+# dependencies) and --prod (stay in the prod-only resolution mode the
+# `pnpm install --prod` above already established, avoiding
+# ERR_PNPM_INCLUDED_DEPS_CONFLICT) actually links the binary correctly.
+RUN CI=true pnpm --filter backend add drizzle-kit@0.31.1 --save-prod --prod
 
 # Copy startup script
 COPY --chown=nextjs:nodejs docker-entrypoint.sh ./
 RUN chmod +x docker-entrypoint.sh
 
-USER nextjs
+# Not dropping to USER nextjs: the mounted host docker socket (needed for
+# docker-based STDIO servers like github-mcp-server/sonarqube) is owned by
+# root:root with no group access, and this is a single-user local gateway,
+# not a multi-tenant service — matches Dockerfile.dev, which also runs as
+# root for the same reason.
 
 # Expose frontend port (Next.js)
 EXPOSE 12008

@@ -1,8 +1,13 @@
 services:
   app:
     container_name: metamcp
-    image: ghcr.io/metatool-ai/metamcp:latest
-    pull_policy: always
+    # Built locally from the checked-out ai-dev source, not pulled — the
+    # published ghcr.io/metatool-ai/metamcp:latest image is several months
+    # stale and predates the env-bootstrap feature and our dialog CSS fix.
+    image: metamcp:local-prod
+    build:
+      context: .
+      dockerfile: Dockerfile
     env_file:
       - .env
     ports:
@@ -170,6 +175,12 @@ services:
       # in error_status=ERROR. The image ships /home/nextjs/.cache/uv owned by
       # nextjs (uid 1001) so a fresh named volume inherits correct ownership.
       - uv_cache:/home/nextjs/.cache/uv
+      # Docker-based STDIO servers (github-mcp-server, sonarqube) run `docker run`
+      # inside this container, so it needs access to the host's Docker daemon.
+      - /var/run/docker.sock:/var/run/docker.sock
+      # quickbooks STDIO server's command references this host path directly
+      # (it's a custom local project, not an installable npm package).
+      - /redacted-path/quickbooks-online-mcp-server:/redacted-path/quickbooks-online-mcp-server:ro
     networks:
       - metamcp-network
 
