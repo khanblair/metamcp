@@ -107,6 +107,29 @@ RUN CI=true pnpm install --prod
 # ERR_PNPM_INCLUDED_DEPS_CONFLICT) actually links the binary correctly.
 RUN CI=true pnpm --filter backend add drizzle-kit@0.31.1 --save-prod --prod
 
+# Pre-warm the npx cache for stdio MCP servers that install via npx at
+# runtime (postman, trello, mobile-mcp). Without this, the *first* time any
+# of these gets spawned, metamcp's connection pool can fan out concurrent
+# spawn attempts (cold-start warmup + per-session pool creation) that race
+# to extract the same package into the same npx cache directory, corrupting
+# it (`npm error ENOTEMPTY` on rename) and silently excluding that server
+# from every tools/list response from then on — a state that doesn't clear
+# itself and doesn't survive a container recreate anyway, since it lives in
+# the container's writable layer. Installing once, sequentially, at build
+# time removes the race instead of recovering from it after the fact.
+#
+# Each command must match that server's actual invocation in
+# mcp_servers.command/args exactly, since npx's cache key is the package
+# spec string. NPM_CONFIG_YES avoids the non-interactive Docker build
+# hanging on npx's install prompt without changing that spec (postman's
+# real invocation has no -y flag, so none is added here either). `timeout`
+# plus stdin from /dev/null lets the build move on once the package is
+# installed and cached, whether or not the server itself (a stdio process
+# expecting a real MCP client) exits cleanly afterwards.
+RUN NPM_CONFIG_YES=true timeout 60 npx @postman/postman-mcp-server </dev/null >/dev/null 2>&1 || true
+RUN timeout 60 npx -y @delorenj/mcp-server-trello </dev/null >/dev/null 2>&1 || true
+RUN timeout 60 npx -y @mobilenext/mobile-mcp@latest </dev/null >/dev/null 2>&1 || true
+
 # Copy startup script
 COPY --chown=nextjs:nodejs docker-entrypoint.sh ./
 RUN chmod +x docker-entrypoint.sh
