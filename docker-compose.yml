@@ -178,9 +178,14 @@ services:
       # Docker-based STDIO servers (github-mcp-server, sonarqube) run `docker run`
       # inside this container, so it needs access to the host's Docker daemon.
       - /var/run/docker.sock:/var/run/docker.sock
-      # quickbooks STDIO server's command references this host path directly
-      # (it's a custom local project, not an installable npm package).
-      - /redacted-path/quickbooks-online-mcp-server:/redacted-path/quickbooks-online-mcp-server:ro
+      # Optional: mount a local custom MCP server project that isn't an
+      # installable npm/docker package (e.g. a private QuickBooks MCP
+      # server). Set QUICKBOOKS_MCP_PATH in your own .env to your project's
+      # path; the container always sees it at the fixed path below, so the
+      # server's command in the metamcp UI should reference that fixed path
+      # regardless of where the project actually lives on your host. If
+      # unset, this mounts an empty placeholder directory — harmless no-op.
+      - ${QUICKBOOKS_MCP_PATH:-./local-mcp-servers/quickbooks}:/mcp-servers/quickbooks:ro
     networks:
       - metamcp-network
 

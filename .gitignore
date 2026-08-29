@@ -45,3 +45,7 @@ yarn-error.log*
 # Docker Files
 docker-compose.override.yml
 compose.override.yml
+
+# Local custom MCP server projects (see local-mcp-servers/README.md)
+local-mcp-servers/*
+!local-mcp-servers/README.md
